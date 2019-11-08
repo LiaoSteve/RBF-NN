@@ -1,0 +1,202 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import timeit
+import time
+import datetime
+from tqdm import tqdm
+
+def sigmoid(x):
+    return 1/(1+np.exp(-x))
+
+def Gassian(input_array, m, sigma):    
+    return np.exp( - np.linalg.norm(input_array-m, axis=1, keepdims=True)**2 / (2 * sigma**2) ) 
+
+np.random.seed(6666)
+x1 = np.linspace(-5,5, 400)
+x2 = np.linspace(-5,5, 400)
+np.random.shuffle(x1) 
+np.random.shuffle(x2) 
+
+d = x1**2 + x2**2    
+
+# Normalize d to range 0.2~0.8
+d_max = np.max(d)
+d_min = np.min(d)
+d = (d-d_min)/(d_max-d_min)*(0.8-0.2)+0.2 
+
+#---------------- Input vector -----------------------------
+num_in  = 2
+
+
+#---------------- Radial Basis phi -----------------------
+num_phi = 15
+sigma   = np.random.uniform(-0.5,0.5,[num_phi,1])
+phi_out = np.zeros([num_phi,1])
+m       = np.random.uniform(-0.5,0.5,[num_phi,num_in])
+#---------------- Output ---------------------------------
+num_out  = 1
+bias_out = np.random.uniform(-0.5,0.5,[num_out,1])
+w_out    = np.random.uniform(-0.5,0.5,[num_phi,num_out])
+
+#---------------- Parameter --------------------------
+eta   = 0.01
+mom   = 0.8
+epoch = 35000
+
+Eav_train = np.zeros([epoch])
+Eav_test = np.zeros([epoch])
+
+dw_out    = temp1 = np.zeros([num_phi,num_out]) 
+dbias_out = temp2 = np.zeros([num_out,1])
+
+dm        = temp3 = np.random.uniform(0,0.5,[num_phi,num_in])
+dsigma    = temp4 = np.random.uniform(0,0.5,[num_phi,1])
+
+#---------------- Traning ----------------------------
+t0 = timeit.default_timer()
+now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+pbar = tqdm(total =epoch)
+for i in range(epoch):         
+
+    #--------------- Feed Forward  -------------------    
+    e = np.zeros([300])
+    E_train = np.zeros([300])
+    for j in range(300):
+        X   = np.array([x1[j],x2[j]]).reshape(2,1)
+
+        XX = np.array(X)
+        for _ in range(num_phi-1):
+            XX = np.append(XX, X, axis=1)
+        XX = np.transpose(XX)
+        dx_m = XX - m
+        
+        phi_out = Gassian(XX,m,sigma)
+        out = sigmoid(np.dot(np.transpose(phi_out),w_out) + bias_out)
+
+        #--------------- Back Propagation-----------------
+        e[j]   = (d[j]-out) 
+        E_train[j] = 0.5 * e[j]**2
+        locg_k = e[j] * (out*(1-out))
+        temp2  = temp2 + mom * dbias_out + eta * locg_k * 1     
+        temp1  = temp1 + mom * dw_out + eta * locg_k * phi_out                  
+
+        temp3  = temp3 + mom * dm + eta * e[j] * w_out * phi_out / sigma**2 * (dx_m)              
+        temp4  = temp4 + mom * dsigma + eta * e[j] * w_out * phi_out / sigma**3 * np.linalg.norm(dx_m, axis=1, keepdims=True)
+
+    #---------- Average delta weight -----------------
+    dbias_out = temp2/300
+    dw_out    = temp1/300       
+    dm        = temp3/300
+    dsigma    = temp4/300  
+
+    temp1 = np.zeros([num_phi,num_out]) 
+    temp2 = np.zeros([num_out,1])
+    temp3 = np.zeros([num_phi,num_in])
+    temp4 = np.zeros([num_phi,1])
+
+    #----------  New weight --------------------------
+    bias_out  = bias_out + dbias_out
+    w_out     = w_out + dw_out              
+    m         = m + dm
+    sigma     = sigma + dsigma
+
+    #---------- Eave_train
+    Eav_train[i]  = np.mean(E_train)
+
+    #---------- Test data loss ---------------     
+    E_test = np.zeros([100])
+    for j in range(100):
+        X   = np.array([x1[300+j],x2[300+j]]).reshape(2,1)
+
+        XX = np.array(X)
+        for _ in range(num_phi-1):
+            XX = np.append(XX, X, axis=1)
+        XX = np.transpose(XX)
+        dx_m = XX - m
+
+        phi_out = Gassian(XX,m,sigma)
+        out = sigmoid(np.dot(np.transpose(phi_out),w_out) + bias_out)
+        E_test = 0.5*( d[300+j] - out )**2      
+
+    Eav_test[i] = np.mean(E_test)
+    if i % 1000 == 0 and i!=0:
+        pbar.update(1000)
+        
+pbar.close()
+t1 = (timeit.default_timer()-t0)
+print('Training time: {} min'.format((t1/60)))
+
+#--------- Predict data --------------
+y_predict = np.zeros([100])
+E_predict = np.zeros([100])
+for j in range(100):
+        X      = np.array([x1[300+j],x2[300+j]]).reshape(2,1)
+
+        XX = np.array(X)
+        for _ in range(num_phi-1):
+            XX = np.append(XX, X, axis=1)
+        XX = np.transpose(XX)
+        dx_m = XX - m
+
+        phi_out = Gassian(XX,m,sigma)
+        out = sigmoid(np.dot(np.transpose(phi_out),w_out) + bias_out)
+        y_predict[j] = out
+        E_predict[j] = 0.5*( d[300+j] - out )**2
+Eav_predict = np.mean(E_predict)
+
+#----------- Return the data they were normolized before ----------------------
+y_predict = (y_predict-0.2)/(0.8-0.2)*(d_max-d_min)+d_min  
+
+#------------ Record the result ------------------
+import csv
+table = [
+    #['TimeStamp','Unit', 'Eta', 'Alpha','Training_loss','Predict_loss','Epoch','Time(min)'],
+    [ now,num_phi, eta, mom, Eav_train[epoch-1], Eav_predict,epoch, int(t1/60)]    
+]
+with open('RBF_output.csv', 'a', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerows(table)
+
+#------------ Scattering Data set ----------------------
+#------- Return the data they were normolized before ---
+d = (d-0.2)/(0.8-0.2)*(d_max-d_min)+d_min 
+'''
+fig1 = plt.figure(num ='Data_Set', figsize=(10,5))
+ax = fig1.add_subplot(121, projection='3d')
+ax.scatter(x1[:300], x2[:300], d[:300], c='b', marker='o', s=5)
+ax.set_xlabel('x1')
+ax.set_ylabel('x2')
+ax.set_zlabel('y')
+plt.title('Training Data')
+
+ax2 = fig1.add_subplot(122, projection='3d')
+ax2.scatter(x1[300:], x2[300:], d[300:], c='r', marker='o', s=5)
+ax2.set_xlabel('x1')
+ax2.set_ylabel('x2')
+ax2.set_zlabel('y')
+plt.title('Testing Data')
+plt.show()
+'''
+
+#------------ Scattering y_Predict data -----------------
+fig2 = plt.figure(num = now, figsize=(14,6))
+ax1 = fig2.add_subplot(122, projection='3d')
+ax1.scatter(x1[300:], x2[300:], y_predict[:],c='g', marker='o', s=15)
+ax1.set_xlabel('x1')
+ax1.set_ylabel('x2')
+ax1.set_zlabel('y')
+plt.title('Predict Data : y = x1^2 +x2^2')
+
+#------------ plot training and testing Loss -----------------
+ax3 = fig2.add_subplot(121)
+ax3.set_xlabel('Epochs')
+ax3.set_ylabel('Loss')
+ax3.plot(range(epoch),Eav_train,label='Train Set :'+str(Eav_train[epoch-1]))
+ax3.plot(range(epoch),Eav_test, color='red', linewidth=1.0, linestyle='--', label='Test Set :'+ str(Eav_test[epoch-1]))
+plt.legend(loc='upper right')
+plt.title('Unit:'+str(num_phi)+', Eta:'+str(eta)+', Alpha:'+str(mom))
+plt.show()
+
+
+
