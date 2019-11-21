@@ -41,9 +41,9 @@ bias_out = np.random.uniform(-0.5,0.5,[num_out,1])
 w_out    = np.random.uniform(-0.5,0.5,[num_phi,num_out])
 
 #---------------- Parameter --------------------------
-eta   = 0.1
+eta   = 1
 mom   = 0.9
-epoch = 4000
+epoch = 6000
 
 Eav_train = np.zeros([epoch])
 Eav_test = np.zeros([epoch])
@@ -59,7 +59,7 @@ os.makedirs("Data gif", exist_ok=True)
 os.makedirs("Gaussian gif", exist_ok=True)
 
 Data_gif = True
-Gaussian_gif = False 
+Gaussian_gif = True 
 
 iter1 = 0 # Data set
 iter2 = 0 # Gaussian
@@ -164,7 +164,7 @@ for i in range(epoch):
         plt.title('y = x1^2 +x2^2')        
         plt.pause(0.001)
         plt.savefig('Data gif/'+str(iter1)+'.png')
-        
+    #---------- display the current gaussian function
     if num_phi == 3 and i% 100 == 0 and Gaussian_gif == True :
         iter2 += 1
         #------------ Plot gaussian ---------
